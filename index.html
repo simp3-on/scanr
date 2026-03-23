@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SCANR — Market Signal Scanner</title>
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+<div class="wrapper">
+
+  <header>
+    <div class="logo-block">
+      <div class="logo">SCANR</div>
+      <div class="logo-sub">
+        <strong>Market Signal Scanner</strong>
+        S&amp;P 500 · FTSE · DAX · CAC · AEX · IBEX · MIB
+      </div>
+    </div>
+    <div class="status-bar">
+      <span>
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">IDLE</span>
+      </span>
+      <span id="countdownDisplay" style="display:none"></span>
+      <span id="clockDisplay">--:--:-- UTC</span>
+      <button class="auto-scan-btn" id="autoScanBtn" onclick="toggleAutoScan()">▶▶ Auto-Scan</button>
+    </div>
+  </header>
+
+  <div class="controls">
+    <div class="control-group">
+      <span class="control-label">Market</span>
+      <select id="marketSelect">
+        <option value="us">🇺🇸  US Markets (S&P 500)</option>
+        <option value="eu">🇪🇺  EU Markets (FTSE / DAX / CAC…)</option>
+        <option value="all">🌍  US + EU Combined</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <span class="control-label">Direction</span>
+      <select id="directionSelect">
+        <option value="both">↕  Both</option>
+        <option value="up">↑  Movers Up</option>
+        <option value="down">↓  Movers Down</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <span class="control-label">Sort By</span>
+      <select id="sortSelect">
+        <option value="change">% Change</option>
+        <option value="volume">Volume Ratio</option>
+        <option value="price">Price</option>
+        <option value="signals">Signal Count</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <span class="control-label">Filter Mode</span>
+      <div class="mode-toggle">
+        <button class="mode-btn active-relaxed" id="btnRelaxed" onclick="setMode('relaxed')">Relaxed</button>
+        <button class="mode-btn"                id="btnStrict"  onclick="setMode('strict')">Strict</button>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <button class="scan-btn" onclick="runScan()">
+        <span id="scanBtnText">▶ Run Scan</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Market hours banner -->
+  <div id="marketHoursBanner" class="market-hours-banner" style="display:none"></div>
+  <div id="closedWarning" class="closed-warning" style="display:none"></div>
+
+  <!-- ── LEGEND ─────────────────────────────────────────────────── -->
+  <div class="legend-bar">
+    <button class="legend-toggle" id="legendToggle" onclick="toggleLegend()">
+      <span class="legend-toggle-icon" id="legendIcon">▶</span>
+      Quick Reference Guide
+    </button>
+  </div>
+
+  <div class="legend-panel" id="legendPanel">
+    <div class="legend-grid">
+
+      <div class="legend-section">
+        <div class="legend-section-title">📊 Columns Explained</div>
+        <div class="legend-items">
+          <div class="legend-item">
+            <span class="legend-term">Price</span>
+            <span class="legend-desc">The stock's latest closing price in USD (or local currency for EU stocks).</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-term">1D Change</span>
+            <span class="legend-desc">How much the price moved today vs yesterday's close. <span class="eg-up">▲ +5%</span> means it went up 5%. <span class="eg-down">▼ -5%</span> means it dropped 5%.</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-term">5D Move</span>
+            <span class="legend-desc">Price change over the last 5 trading days (roughly 1 week). Tells you if today's move is part of a bigger trend or just a one-day event.</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-term">Volume</span>
+            <span class="legend-desc">How many more people than usual are trading this stock today. <strong>1.0×</strong> = normal. <strong>3.0×</strong> = 3 times the usual activity. Higher = more attention.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="legend-section">
+        <div class="legend-section-title">🚦 Signals</div>
+        <div class="legend-items">
+          <div class="legend-item">
+            <span class="legend-term signal-tag PRICE_MOVE">PRICE MOVE</span>
+            <span class="legend-desc">The stock moved more than the threshold in a single day (≥1.5% relaxed / ≥3% strict). Something caused a notable price swing.</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-term signal-tag VOL_SPIKE">VOL SPIKE</span>
+            <span class="legend-desc">Trading activity is unusually high compared to the 10-day average. Often means news hit, or big investors are moving in/out.</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-term signal-tag MOMENTUM">MOMENTUM</span>
+            <span class="legend-desc">The stock has been trending in the same direction for 5 days. The move isn't just today — there's a pattern building.</span>
+          </div>
+        </div>
+        <div class="legend-tip">💡 <strong>Tip:</strong> Stocks with 2–3 signals are the strongest candidates. All three signals agreeing is rare and worth attention.</div>
+      </div>
+
+      <div class="legend-section">
+        <div class="legend-section-title">📶 Volume Bar Colors</div>
+        <div class="legend-items">
+          <div class="legend-item">
+            <span class="legend-term"><span class="vol-sample vol-blue"></span> Blue</span>
+            <span class="legend-desc">Normal to moderate spike — 1× to 2.5× the usual volume. Nothing unusual.</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-term"><span class="vol-sample vol-gold"></span> Orange</span>
+            <span class="legend-desc">High spike — 2.5× to 4× normal volume. Elevated interest, worth noting.</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-term"><span class="vol-sample vol-red"></span> Red</span>
+            <span class="legend-desc">Extreme spike — 4×+ normal volume. Major trading activity. Something significant is happening.</span>
+          </div>
+        </div>
+        <div class="legend-tip">⚠️ Volume color is about <strong>intensity only</strong> — not direction. A red bar on a rising stock means it's surging on huge volume. Same bar on a falling stock means it's crashing on huge volume.</div>
+      </div>
+
+      <div class="legend-section">
+        <div class="legend-section-title">⚙️ Filter Modes</div>
+        <div class="legend-items">
+          <div class="legend-item">
+            <span class="legend-term" style="color:var(--accent)">Relaxed</span>
+            <span class="legend-desc">Shows anything with at least one signal (≥1.5% move OR ≥1.3× volume). Casts a wide net — expect more results, more noise.</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-term" style="color:var(--gold)">Strict</span>
+            <span class="legend-desc">Only shows stocks with both a big price move (≥3%) AND a volume spike (≥2×) on the same day. Fewer results, higher conviction.</span>
+          </div>
+        </div>
+        <div class="legend-tip">💡 <strong>Start with Relaxed</strong> to see the full picture. Switch to <strong>Strict</strong> when you want only the strongest, clearest signals.</div>
+      </div>
+
+      <div class="legend-section">
+        <div class="legend-section-title">↕️ Direction Filter</div>
+        <div class="legend-items">
+          <div class="legend-item">
+            <span class="legend-term">Both</span>
+            <span class="legend-desc">Shows all movers regardless of direction. Best for a general market overview.</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-term">Movers Up ↑</span>
+            <span class="legend-desc">Only stocks that went up today. Use this to find stocks gaining strength or breaking out.</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-term">Movers Down ↓</span>
+            <span class="legend-desc">Only stocks that went down today. Use this to spot weakness or stocks under selling pressure.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="legend-section">
+        <div class="legend-section-title">🔄 Auto-Scan</div>
+        <div class="legend-items">
+          <div class="legend-item">
+            <span class="legend-term">What it does</span>
+            <span class="legend-desc">Automatically re-runs the scan every 10 minutes so you don't have to manually refresh. A countdown shows when the next scan fires.</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-term"><span class="new-badge">NEW</span> badge</span>
+            <span class="legend-desc">After an auto-scan, any stock that wasn't in the previous results gets a NEW badge so you can spot fresh signals immediately.</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-term">Yellow flash</span>
+            <span class="legend-desc">Rows that were already in the list but had their price or signals change will briefly flash yellow to draw your eye to what updated.</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Stats bar -->
+  <div class="stats-bar" id="statsBar" style="display:none">
+    <div class="stat">
+      <span class="stat-label">Signals Found</span>
+      <span class="stat-value accent" id="statSignals">—</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Stocks Scanned</span>
+      <span class="stat-value" id="statScanned">—</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Bullish</span>
+      <span class="stat-value up" id="statUp">—</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Bearish</span>
+      <span class="stat-value down" id="statDown">—</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Avg Move</span>
+      <span class="stat-value" id="statAvgMove">—</span>
+    </div>
+  </div>
+
+  <!-- Mode info banner -->
+  <div id="modeInfo" class="mode-info"></div>
+
+  <!-- Error box -->
+  <div id="errorBox" class="error-box" style="display:none"></div>
+
+  <!-- Results table header -->
+  <div class="table-header" id="tableHeader" style="display:none">
+    <span class="table-title">Opportunities</span>
+    <span class="timestamp" id="scanTimestamp"></span>
+  </div>
+
+  <!-- Results render here -->
+  <div id="tableContainer">
+    <div class="state-box">
+      <div class="icon">📡</div>
+      <p>Configure your filters and run a scan to find signals</p>
+    </div>
+  </div>
+
+  <div class="footer-note">
+    SCANR pulls daily OHLCV data via yfinance &nbsp;·&nbsp;
+    Universe sourced live from S&amp;P 500 / FTSE 100 / DAX / CAC 40 / AEX / IBEX 35 / FTSE MIB / OMX 30 &nbsp;·&nbsp;
+    Not financial advice
+  </div>
+
+</div>
+<script src="static/main.js"></script>
+</body>
+</html>

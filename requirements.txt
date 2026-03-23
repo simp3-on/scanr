@@ -1,0 +1,6 @@
+flask
+flask-cors
+yfinance
+pandas
+lxml
+requests
